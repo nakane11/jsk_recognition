@@ -6,11 +6,13 @@
 
   <test test-name="test_evaluate_box_segmentation_by_gt_box"
         name="test_evaluate_box_segmentation_by_gt_box"
-        pkg="jsk_tools" type="test_topic_published.py"
+        pkg="jsk_recognition_utils" type="test_topic_published.py"
         time-limit="360" retry="3">
     <rosparam>
       topic_0: /evaluate_box_segmentation_by_gt_box/output
       timeout_0: 30
+      check_after_kill_node: true
+      node_names: [evaluate_box_segmentation_by_gt_box,]
     </rosparam>
   </test>
 
