@@ -2,6 +2,7 @@
 
   <include file="$(find jsk_pcl_ros)/sample/sample_particle_filter_tracking_service_renew.launch">
     <arg name="gui" value="false"/>
+    <arg name="reference_update_duration" value="0.1"/>
   </include>
 
   <test test-name="test_particle_filter_tracking_service_renew"
