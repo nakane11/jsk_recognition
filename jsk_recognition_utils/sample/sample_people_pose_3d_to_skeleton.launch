@@ -1,5 +1,6 @@
 <launch>
   <arg name="gui" default="true" />
+  <arg name="gpu" default="-1" />
   <arg name="coral" default="true" />
   <arg name="INPUT_IMAGE" default="/kinect_head/rgb/image_rect_color" />
   <arg name="INPUT_DEPTH_IMAGE" default="/kinect_head/depth_registered/hw_registered/image_rect_raw" />
