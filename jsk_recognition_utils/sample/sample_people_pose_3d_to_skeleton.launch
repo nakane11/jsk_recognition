@@ -1,0 +1,131 @@
+<launch>
+  <arg name="gui" default="true" />
+  <arg name="coral" default="true" />
+  <arg name="INPUT_IMAGE" default="/kinect_head/rgb/image_rect_color" />
+  <arg name="INPUT_DEPTH_IMAGE" default="/kinect_head/depth_registered/hw_registered/image_rect_raw" />
+  <arg name="INPUT_CAMERA_INFO" default="/kinect_head/rgb/camera_info" />
+  
+  <!-- Coral TPU -->
+  <group if="$(arg coral)">
+    <node name="people_pose_estimation_2d"
+          pkg="coral_usb" type="edgetpu_human_pose_estimator.py"
+          output="screen" respawn="true">
+      <remap from="~input" to="$(arg INPUT_IMAGE)" />
+      <rosparam subst_value="true" >
+        model_file: package://coral_usb/python/coral_usb/posenet/models/mobilenet/posenet_mobilenet_v1_075_481_641_quant_decoder_edgetpu.tflite
+        image_transport: raw
+        enable_visualization: true
+        device_id: 0
+      </rosparam>
+    </node>
+    <node name="people_pose_2d_to_3d"
+          pkg="jsk_perception" type="people_pose_2d_to_3d.py"
+          output="screen">
+      <remap from="~input/pose" to="edgetpu_human_pose_estimator/output/poses" />
+      <remap from="~input/info" to="$(arg INPUT_CAMERA_INFO)" />
+      <remap from="~input/depth" to="$(arg INPUT_DEPTH_IMAGE)" />
+      <rosparam subst_value="true">
+        approximate_sync: true
+        queue_size: 500
+      </rosparam>
+    </node>
+    <node name="people_pose_2d_output_relay"
+          pkg="topic_tools" type="relay" 
+          args="people_pose_estimation_2d/output/image people_pose_estimation_2d/output"
+          output="screen"/>
+    <node name="people_pose_3d_relay"
+          pkg="topic_tools" type="relay" 
+          args="people_pose_2d_to_3d/output/pose people_pose_estimation_2d/pose"
+          output="screen"/>
+
+    <node name="people_pose_3d_to_skeleton"
+          pkg="jsk_recognition_utils" type="people_pose_3d_to_skeleton.py">
+      <remap from="~input" to="people_pose_estimation_2d/pose" />
+      <rosparam>
+        limb_sequence: [[ 1, 3],[ 3, 5],[ 5, 7],[ 7, 9],[ 9,11],
+                        [ 1, 2],[ 2, 4],[ 4, 6],[ 6, 8],[ 8,10],
+                        [ 7,13],[13,15],[15,17],
+                        [ 6,12],[12,14],[14,16],
+                        [ 7, 6],[13,12]]
+        index2limbname: ["nose",
+                         "left eye",
+                         "right eye",
+                         "left ear",
+                         "right ear",
+                         "left shoulder",
+                         "right shoulder",
+                         "left elbow",
+                         "right elbow",
+                         "left wrist",
+                         "right wrist",
+                         "left hip",
+                         "right hip",
+                         "left knee",
+                         "right knee",
+                         "left ankle",
+                         "right ankle"]
+      </rosparam>
+    </node>
+  </group>
+
+  <!-- GPU or CPU -->
+  <group unless="$(arg coral)">
+    <node name="people_pose_estimation_2d"
+          pkg="jsk_perception" type="people_pose_estimation_2d.py"
+          output="screen">
+      <remap from="~input" to="$(arg INPUT_IMAGE)" />
+      <remap from="~input/info" to="$(arg INPUT_CAMERA_INFO)" />
+      <remap from="~input/depth" to="$(arg INPUT_DEPTH_IMAGE)" />
+      <rosparam subst_value="true">
+        gpu: $(arg gpu)
+        model_file: $(find jsk_perception)/trained_data/pose_estimation_2d_chainermodel.pkl
+        hand:
+          enable: true
+          model_file: $(find jsk_perception)/trained_data/pose_estimation_2d_hand.chainermodel
+        with_depth: true
+        scales: [0.38]
+        stride: 8
+      </rosparam>
+    </node>
+
+    <node name="people_pose_3d_to_skeleton"
+          pkg="jsk_recognition_utils" type="people_pose_3d_to_skeleton.py">
+      <remap from="~input" to="people_pose_estimation_2d/pose" />
+      <rosparam>
+        limb_sequence: [[ 2,  1], [ 1, 16], [ 1, 15], [ 6, 18], [ 3, 17],
+                        [ 2,  3], [ 2,  6], [ 3,  4], [ 4,  5], [ 6,  7],
+                        [ 7,  8], [ 2,  9], [ 9, 10], [10, 11], [ 2, 12],
+                        [12, 13], [13, 14], [15, 17], [16, 18]]
+        index2limbname: ["Nose",
+                         "Neck",
+                         "RShoulder",
+                         "RElbow",
+                         "RWrist",
+                         "LShoulder",
+                         "LElbow",
+                         "LWrist",
+                         "RHip",
+                         "RKnee",
+                         "RAnkle",
+                         "LHip",
+                         "LKnee",
+                         "LAnkle",
+                         "REye",
+                         "LEye",
+                         "REar",
+                         "LEar",
+                         "Bkg"]
+
+      </rosparam>
+    </node>
+  </group>
+  
+
+  <group if="$(arg gui)">
+    <node name="rviz"
+          pkg="rviz" type="rviz"
+          args="-d $(find jsk_recognition_utils)/sample/config/sample_people_pose_3d_to_skeleton.rviz">
+    </node>
+  </group>
+
+</launch>
