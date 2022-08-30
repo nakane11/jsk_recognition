@@ -32,7 +32,10 @@
  *  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  *********************************************************************/
+#ifndef JSK_PERCEPTION_POINT_POSE_EXTRACTOR_H_
+#define JSK_PERCEPTION_POINT_POSE_EXTRACTOR_H_
 
+#include <jsk_topic_tools/diagnostic_nodelet.h>
 #include <ros/ros.h>
 #include <rospack/rospack.h>
 #include <cv_bridge/cv_bridge.h>
@@ -65,10 +68,8 @@
 #include <dynamic_reconfigure/server.h>
 #include <jsk_perception/point_pose_extractorConfig.h>
 #include <jsk_perception/SetTemplate.h>
-#include <jsk_topic_tools/log_utils.h>
-namespace enc = sensor_msgs::image_encodings;
 
-bool _first_sample_change;
+namespace enc = sensor_msgs::image_encodings;
 
 void features2keypoint (posedetection_msgs::Feature0D features,
                         std::vector<cv::KeyPoint>& keypoints,
@@ -549,134 +550,38 @@ public:
 };  // the end of difinition of class Matching_Template
 
 
-class PointPoseExtractor
+class Mouse
 {
-  ros::NodeHandle _n;
-  image_transport::ImageTransport it;
-  ros::Subscriber _sub;
-  ros::ServiceServer _server;
-  ros::ServiceClient _client;
-  ros::Publisher _pub, _pub_agg, _pub_pose;
-  tf::TransformBroadcaster _br;
-  image_transport::Publisher _debug_pub;
-  double _reprojection_threshold;
-  double _distanceratio_threshold;
-  double _th_step;
-  double _phi_step;
-  bool _autosize;
-  double _err_thr;
-  static std::vector<Matching_Template *> _templates;
-  image_geometry::PinholeCameraModel pcam;
-  bool pnod;
-  bool _initialized;
-  bool _viewer;
-  bool _publish_tf;
-  std::string _child_frame_id;
-
 public:
-  PointPoseExtractor() : it(ros::NodeHandle("~")) {
-    // _sub = _n.subscribe("ImageFeature0D", 1,
-    //                     &PointPoseExtractor::imagefeature_cb, this);
-    _client = _n.serviceClient<posedetection_msgs::Feature0DDetect>("Feature0DDetect");
-    _pub = _n.advertise<posedetection_msgs::ObjectDetection>("ObjectDetection", 10);
-    _pub_agg = _n.advertise<posedetection_msgs::ObjectDetection>("ObjectDetection_agg", 10);
-    _pub_pose = _n.advertise<geometry_msgs::PoseStamped>("object_pose", 10);
-    _debug_pub = it.advertise("debug_image", 1);
-    _server = _n.advertiseService("SetTemplate", &PointPoseExtractor::settemplate_cb, this);
-    _initialized = false;
-  }
 
-  virtual ~PointPoseExtractor(){
-    _sub.shutdown();
-    _client.shutdown();
-    _pub.shutdown();
-    _pub_agg.shutdown();
-  }
-
-  static void make_template_from_mousecb(Matching_Template *mt){
-    cv::Mat H;
-    cv::Mat tmp_template, tmp_warp_template;
-    std::vector<cv::Point2f>pt1, pt2;
-    double width, height;
-    std::string filename;
-    std::cout << "input template's [width]" << std::endl;
-    std::cin >> width;
-    std::cout << "input template's [height]" << std::endl;
-    std::cin >> height;
-    std::cout << "input template's [filename]" << std::endl;
-    std::cin >> filename;
-
-    for (int i = 0; i < 4; i++){
-      pt1.push_back(cv::Point2d((int)mt->_correspondances.at(i).x,
-                                (int)mt->_correspondances.at(i).y + mt->_template_img.size().height));
+  static int event(void)
+    {
+      int l_event = m_event;
+      m_event = -1;
+      return l_event;
     }
-    cv::Rect rect = cv::boundingRect(cv::Mat(pt1));
-    double scale = std::max(width, height) / 500.0;
-    int iwidth = width / scale, iheight = height / scale;
-    pt2.push_back(cv::Point2d(0,0));
-    pt2.push_back(cv::Point2d(iwidth,0));
-    pt2.push_back(cv::Point2d(iwidth,iheight));
-    pt2.push_back(cv::Point2d(0,     iheight));
-    H = cv::findHomography(cv::Mat(pt1), cv::Mat(pt2));
-
-    cv::getRectSubPix(mt->_previous_stack_img, rect.size(),
-                      cv::Point2f((rect.tl().x + rect.br().x)/2.0,(rect.tl().y + rect.br().y)/2.0),
-                      tmp_template);
-    cv::warpPerspective(mt->_previous_stack_img, tmp_warp_template, H, cv::Size(iwidth, iheight));
-
-    try {
-      cv::imwrite(filename,tmp_template);
-      boost::filesystem::path fname(filename);
-      std::stringstream ss;
-      ss << fname.stem() << "_wrap" << fname.extension();
-      cv::imwrite(ss.str(),tmp_warp_template);
-    }catch (cv::Exception e) {
-      std::cerr << e.what()  << std::endl;
+  static int x(void)
+    {
+      return m_x;
     }
-
-    for (int i = 0; i < (int)pt1.size(); i++){
-      pt2.push_back(cv::Point2d((int)pt1.at(i).x - rect.x,
-                                (int)pt1.at(i).y - rect.y - mt->_template_img.size().height));
+  static int y(void)
+    {
+      return m_y;
     }
-    // cv::Mat mask_img = cv::Mat::zeros(tmp_template.size(), CV_8UC3);
-    // cv::fillConvexPoly(mask_img, pt2.begin(), (int)pt2.size(), CV_RGB(255, 255, 255));
-
-    // cv::namedWindow("hoge", 1);
-    // cv::imshow("hoge", mask_img);
-
-    cv::Mat M = (cv::Mat_<double>(3,3) << 1,0,0, 0,1,0, 0,0,1);
-    std::string window_name = "sample" + boost::lexical_cast<std::string>((int)_templates.size());
-
-    Matching_Template* tmplt = 
-      new Matching_Template (tmp_warp_template, "sample",
-                             tmp_warp_template.size().width, tmp_warp_template.size().height,
-                             width, height,
-                             tf::Transform(tf::Quaternion(0, 0, 0, 1), tf::Vector3(0, 0, 0)),
-                             M,
-                             mt->_reprojection_threshold,
-                             mt->_distanceratio_threshold,
-                             _first_sample_change ? window_name : mt->_window_name,
-                             cv::getWindowProperty(mt->_window_name, CV_WND_PROP_AUTOSIZE));
-
-    mt->_correspondances.clear();
-    _templates.push_back(tmplt);
-    cv::namedWindow(_first_sample_change ? window_name : mt->_window_name,
-                    cv::getWindowProperty(mt->_window_name, CV_WND_PROP_AUTOSIZE));
-    cvSetMouseCallback (_first_sample_change ? window_name.c_str() : mt->_window_name.c_str(),
-                        &cvmousecb, static_cast<void *>(_templates.back()));
-    _first_sample_change = true;
-  }
 
   static void cvmousecb (int event, int x, int y, int flags, void* param){
-    Matching_Template *mt = (Matching_Template*)param;
-    // std::cerr << "mousecb_ -> " << mt << std::endl;
+    // Matching_Template *mt = (Matching_Template*)param;
+    std::vector<Matching_Template*>* mt_list = ((std::vector<Matching_Template*>*)param);
+    Matching_Template* mt = ((std::vector<Matching_Template*>*)param)->back();
+    // Matching_Template *mt = (Matching_Template*)param;
+    /* std::cerr << "mousecb_ -> " << mt << std::endl; */
     switch (event){
     case CV_EVENT_LBUTTONUP: {
       cv::Point2d pt(x,y - (int)mt->_template_img.size().height);
       ROS_INFO("add correspondence (%d, %d)", (int)pt.x, (int)pt.y);
       mt->_correspondances.push_back(pt);
       if ((int)mt->_correspondances.size() >= 4){
-        make_template_from_mousecb(mt);
+        make_template_from_mousecb(*mt_list);
         mt->_correspondances.clear();
         ROS_INFO("reset");
       }
@@ -689,375 +594,143 @@ public:
     }
     }
   }
+  static void make_template_from_mousecb(std::vector<Matching_Template*>& mt_list){
+      Matching_Template* mt = mt_list.back();
+      cv::Mat H;
+      cv::Mat tmp_template, tmp_warp_template;
+      std::vector<cv::Point2f>pt1, pt2;
+      double width, height;
+      std::string filename;
+      std::cout << "input template's [width]" << std::endl;
+      std::cin >> width;
+      std::cout << "input template's [height]" << std::endl;
+      std::cin >> height;
+      std::cout << "input template's [filename]" << std::endl;
+      std::cin >> filename;
 
-
-  void initialize () {
-    std::string _pose_str;
-    double template_width;
-    double template_height;
-    std::string template_filename;
-    std::string window_name;
-    ros::NodeHandle local_nh("~");
-
-    local_nh.param("child_frame_id", _child_frame_id, std::string("matching"));
-    local_nh.param("object_width",  template_width,  0.06);
-    local_nh.param("object_height", template_height, 0.0739);
-    local_nh.param("relative_pose", _pose_str, std::string("0 0 0 0 0 0 1"));
-    std::string default_template_file_name;
-    try {
-#ifdef ROSPACK_EXPORT
-      rospack::ROSPack rp;
-      rospack::Package *p = rp.get_pkg("jsk_perception");
-      if (p!=NULL) default_template_file_name = p->path + std::string("/sample/opencv-logo2.png");
-#else
-      rospack::Rospack rp;
-      std::vector<std::string> search_path;
-      rp.getSearchPathFromEnv(search_path);
-      rp.crawl(search_path, 1);
-      std::string path;
-      if (rp.find("jsk_perception",path)==true) default_template_file_name = path + std::string("/sample/opencv-logo2.png");
-#endif
-    } catch (std::runtime_error &e) {
-    }
-    local_nh.param("template_filename", template_filename, default_template_file_name);
-    local_nh.param("reprojection_threshold", _reprojection_threshold, 3.0);
-    local_nh.param("distanceratio_threshold", _distanceratio_threshold, 0.49);
-    local_nh.param("error_threshold", _err_thr, 50.0);
-    local_nh.param("theta_step", _th_step, 5.0);
-    local_nh.param("phi_step", _phi_step, 5.0);
-    local_nh.param("viewer_window", _viewer, true);
-    local_nh.param("window_name", window_name, std::string("sample1"));
-    local_nh.param("autosize", _autosize, false);
-    local_nh.param("publish_null_object_detection", pnod, false);
-    local_nh.param("publish_tf", _publish_tf, false);
-
-    _first_sample_change = false;
-
-    // make one template
-    cv::Mat template_img;
-    template_img = cv::imread (template_filename, 1);
-    if ( template_img.empty()) {
-      ROS_ERROR ("template picture <%s> cannot read. template picture is not found or uses unsuported format.", template_filename.c_str());
-      return;
-    }
-
-    // relative pose
-    std::vector<double> rv(7);
-    std::istringstream iss(_pose_str);
-    tf::Transform transform;
-    for(int i=0; i<6; i++)
-      iss >> rv[i];
-
-    if (iss.eof()) { // use rpy expression
-      transform = tf::Transform(tf::createQuaternionFromRPY(rv[3], rv[4], rv[5]),
-                                 tf::Vector3(rv[0], rv[1], rv[2]));
-    } else {  // use quaternion expression
-      iss >> rv[6];
-      transform = tf::Transform(tf::Quaternion(rv[3], rv[4], rv[5], rv[6]),
-                                 tf::Vector3(rv[0], rv[1], rv[2]));
-    }
-
-    // add the image to template list
-    add_new_template(template_img, window_name, transform,
-                     template_width, template_height, _th_step, _phi_step);
-
-  } // initialize
-
-
-  cv::Mat make_homography(cv::Mat src, cv::Mat rvec, cv::Mat tvec,
-                          double template_width, double template_height, cv::Size &size){
-
-    cv::Point3f coner[4] = {cv::Point3f(-(template_width/2.0), -(template_height/2.0),0),
-                            cv::Point3f(template_width/2.0,-(template_height/2.0),0),
-                            cv::Point3f(template_width/2.0,template_height/2.0,0),
-                            cv::Point3f(-(template_width/2.0),template_height/2.0,0)};
-    cv::Mat coner_mat (cv::Size(4, 1), CV_32FC3, coner);
-    std::vector<cv::Point2f> coner_img_points;
-
-    cv::Mat zero_distortion_mat = cv::Mat::zeros(4, 1, CV_64FC1);
-    cv::projectPoints(coner_mat, rvec, tvec,
-                      pcam.intrinsicMatrix(),
-                      zero_distortion_mat, // pcam.distortionCoeffs(),
-                      coner_img_points);
-    float x_min = 10000, x_max = 0;
-    float y_min = 10000, y_max = 0;
-    for (int i = 0; i < (int)coner_img_points.size(); i++){
-      x_min = std::min(x_min, coner_img_points.at(i).x);
-      x_max = std::max(x_max, coner_img_points.at(i).x);
-      y_min = std::min(y_min, coner_img_points.at(i).y);
-      y_max = std::max(y_max, coner_img_points.at(i).y);
-    }
-
-    std::vector<cv::Point2f> coner_img_points_trans;
-    for (int i = 0; i < (int)coner_img_points.size(); i++){
-      cv::Point2f pt_tmp(coner_img_points.at(i).x - x_min,
-                         coner_img_points.at(i).y - y_min);
-      coner_img_points_trans.push_back(pt_tmp);
-    }
-
-    cv::Point2f template_points[4] = {cv::Point2f(0,0),
-                                      cv::Point2f(src.size().width,0),
-                                      cv::Point2f(src.size().width,src.size().height),
-                                      cv::Point2f(0,src.size().height)};
-    cv::Mat template_points_mat (cv::Size(4, 1), CV_32FC2, template_points);
-
-    size = cv::Size(x_max - x_min, y_max - y_min);
-    return cv::findHomography(template_points_mat, cv::Mat(coner_img_points_trans), 0, 3);
-  }
-
-
-  int make_warped_images (cv::Mat src, std::vector<cv::Mat> &imgs,
-                          std::vector<cv:: Mat> &Mvec,
-                          double template_width, double template_height,
-                          double th_step, double phi_step){
-
-    std::vector<cv::Size> sizevec;
-
-    for (int i = (int)((-3.14/4.0)/th_step); i*th_step < 3.14/4.0; i++){
-      for (int j = (int)((-3.14/4.0)/phi_step); j*phi_step < 3.14/4.0; j++){
-        double fR3[3], fT3[3];
-        cv::Mat rvec(3, 1, CV_64FC1, fR3);
-        cv::Mat tvec(3, 1, CV_64FC1, fT3);
-
-        tf::Quaternion quat;
-        quat.setEuler(0, th_step*i, phi_step*j);
-        fR3[0] = quat.getAxis().x() * quat.getAngle();
-        fR3[1] = quat.getAxis().y() * quat.getAngle();
-        fR3[2] = quat.getAxis().z() * quat.getAngle();
-        fT3[0] = 0;
-        fT3[1] = 0;
-        fT3[2] = 0.5;
-
-        cv::Mat M;
-        cv::Size size;
-        M = make_homography(src, rvec, tvec, template_width, template_height, size);
-        Mvec.push_back(M);
-        sizevec.push_back(size);
+      for (int i = 0; i < 4; i++){
+        pt1.push_back(cv::Point2d((int)mt->_correspondances.at(i).x,
+                                  (int)mt->_correspondances.at(i).y + mt->_template_img.size().height));
       }
-    }
+      cv::Rect rect = cv::boundingRect(cv::Mat(pt1));
+      double scale = std::max(width, height) / 500.0;
+      int iwidth = width / scale, iheight = height / scale;
+      pt2.push_back(cv::Point2d(0,0));
+      pt2.push_back(cv::Point2d(iwidth,0));
+      pt2.push_back(cv::Point2d(iwidth,iheight));
+      pt2.push_back(cv::Point2d(0,     iheight));
+      H = cv::findHomography(cv::Mat(pt1), cv::Mat(pt2));
 
-    for (int i = 0; i < (int)Mvec.size(); i++){
-      cv::Mat dst;
-      cv::warpPerspective(src, dst, Mvec.at(i), sizevec.at(i),
-                          CV_INTER_LINEAR, IPL_BORDER_CONSTANT, 0);
-      imgs.push_back(dst);
-    }
-    return 0;
-  }
+      cv::getRectSubPix(mt->_previous_stack_img, rect.size(),
+                        cv::Point2f((rect.tl().x + rect.br().x)/2.0,(rect.tl().y + rect.br().y)/2.0),
+                        tmp_template);
+      cv::warpPerspective(mt->_previous_stack_img, tmp_warp_template, H, cv::Size(iwidth, iheight));
 
-  bool add_new_template(cv::Mat img, std::string typestr, tf::Transform relative_pose,
-                        double template_width, double template_height,
-                        double theta_step=5.0, double phi_step=5.0)
+      try {
+        cv::imwrite(filename,tmp_template);
+        boost::filesystem::path fname(filename);
+        std::stringstream ss;
+        ss << fname.stem() << "_wrap" << fname.extension();
+        cv::imwrite(ss.str(),tmp_warp_template);
+      }catch (cv::Exception e) {
+        std::cerr << e.what()  << std::endl;
+      }
+
+      for (int i = 0; i < (int)pt1.size(); i++){
+        pt2.push_back(cv::Point2d((int)pt1.at(i).x - rect.x,
+                                  (int)pt1.at(i).y - rect.y - mt->_template_img.size().height));
+      }
+      // cv::Mat mask_img = cv::Mat::zeros(tmp_template.size(), CV_8UC3);
+      // cv::fillConvexPoly(mask_img, pt2.begin(), (int)pt2.size(), CV_RGB(255, 255, 255));
+
+      // cv::namedWindow("hoge", 1);
+      // cv::imshow("hoge", mask_img);
+
+      cv::Mat M = (cv::Mat_<double>(3,3) << 1,0,0, 0,1,0, 0,0,1);
+      std::string window_name = "sample" + boost::lexical_cast<std::string>((int)mt_list.size());
+
+      Matching_Template* tmplt =
+        new Matching_Template (tmp_warp_template, "sample",
+                               tmp_warp_template.size().width, tmp_warp_template.size().height,
+                               width, height,
+                               tf::Transform(tf::Quaternion(0, 0, 0, 1), tf::Vector3(0, 0, 0)),
+                               M,
+                               mt->_reprojection_threshold,
+                               mt->_distanceratio_threshold,
+                               first_sample_change ? window_name : mt->_window_name,
+                               cv::getWindowProperty(mt->_window_name, CV_WND_PROP_AUTOSIZE));
+
+      mt->_correspondances.clear();
+      mt_list.push_back(tmplt);
+      cv::namedWindow(first_sample_change ? window_name : mt->_window_name,
+                      cv::getWindowProperty(mt->_window_name, CV_WND_PROP_AUTOSIZE));
+      cvSetMouseCallback (first_sample_change ? window_name.c_str() : mt->_window_name.c_str(),
+                          &cvmousecb, static_cast<void *>(mt_list.data()));
+                          // &cvmousecb, static_cast<void *>(mt_list.back()));
+      first_sample_change = true;
+    }
+private:
+  static bool first_sample_change;
+  static int m_event;
+  static int m_x;
+  static int m_y;
+};
+int Mouse::m_event;
+int Mouse::m_x;
+int Mouse::m_y;
+bool Mouse::first_sample_change;
+
+namespace jsk_perception
+{
+  class PointPoseExtractor: public jsk_topic_tools::DiagnosticNodelet
   {
-    std::vector<cv::Mat> imgs;
-    std::vector<cv::Mat> Mvec;
-    make_warped_images(img, imgs, Mvec,
-                       template_width, template_height, theta_step, phi_step);
+  public:
+    std::vector<Matching_Template *> _templates;
+    typedef jsk_perception::point_pose_extractorConfig Config;
+    PointPoseExtractor() : DiagnosticNodelet("PointPoseExtractor") {}
+    virtual ~PointPoseExtractor();
+  protected:
+    ros::NodeHandle _n;
+    image_transport::ImageTransport *it;
+    ros::Subscriber _sub;
+    ros::ServiceServer _server;
+    ros::ServiceClient _client;
+    ros::Publisher _pub, _pub_agg, _pub_pose;
+    tf::TransformBroadcaster _br;
+    image_transport::Publisher _debug_pub;
+    double _reprojection_threshold;
+    double _distanceratio_threshold;
+    double _th_step;
+    double _phi_step;
+    bool _autosize;
+    double _err_thr;
+    image_geometry::PinholeCameraModel pcam;
+    bool pnod;
+    bool _initialized;
+    bool _viewer;
+    bool _publish_tf;
+    std::string _child_frame_id;
 
-    for (int i = 0; i < (int)imgs.size(); i++){
-      std::string type = typestr;
-      if(imgs.size() > 1) {
-        char chr[20];
-        sprintf(chr, "%d", i);
-        type += "_" + std::string(chr);
-      }
-
-      Matching_Template * tmplt = 
-        new Matching_Template(imgs.at(i), type,
-                              img.size().width, img.size().height,
-                              template_width, template_height,
-                              relative_pose, Mvec.at(i),
-                              _reprojection_threshold,
-                              _distanceratio_threshold,
-                              (_viewer ? type : ""), _autosize);
-      _templates.push_back(tmplt);
-      if( _viewer )
-      {
-        cv::namedWindow(type, _autosize ? CV_WINDOW_AUTOSIZE : 0);
-        cvSetMouseCallback (type.c_str(), &cvmousecb, static_cast<void *>(_templates.back()));
-      }
-    }
-    return true;
-  }
-
-  bool settemplate_cb (jsk_perception::SetTemplate::Request &req,
-                       jsk_perception::SetTemplate::Response &res){
-      cv_bridge::CvImagePtr cv_ptr;
-      cv_ptr = cv_bridge::toCvCopy(req.image, enc::BGR8);
-      cv::Mat img(cv_ptr->image);
-
-      tf::Transform transform(tf::Quaternion(req.relativepose.orientation.x,
-                                             req.relativepose.orientation.y,
-                                             req.relativepose.orientation.z,
-                                             req.relativepose.orientation.w),
-                              tf::Vector3(req.relativepose.position.x,
-                                          req.relativepose.position.y,
-                                          req.relativepose.position.z));
-
-      // add the image to template list 
-      add_new_template(img, req.type, transform,
-                       req.dimx, req.dimy, 1.0, 1.0);
-      return true;
-  }
-
-
-  void imagefeature_cb (const posedetection_msgs::ImageFeature0DConstPtr& msg){
-    std::vector<cv::KeyPoint> sourceimg_keypoints;
-    cv::Mat sourceimg_descriptors;
-    std::vector<posedetection_msgs::Object6DPose> vo6p;
-    posedetection_msgs::ObjectDetection od;
-
-    cv_bridge::CvImagePtr cv_ptr;
-    cv_ptr = cv_bridge::toCvCopy(msg->image, enc::BGR8);
-    cv::Mat src_img(cv_ptr->image);
-
-    // from ros messages to keypoint and pin hole camera model
-    features2keypoint (msg->features, sourceimg_keypoints, sourceimg_descriptors);
-    pcam.fromCameraInfo(msg->info);
-    if ( cv::countNonZero(pcam.intrinsicMatrix()) == 0 ) {
-      ROS_FATAL("intrinsic matrix is zero, your camera info looks invalid");
-    }
-    if ( !_initialized ) {
-      // make template images from camera info
-      initialize();
-      std::cerr << "initialize templates done" << std::endl;
-      _initialized = true;
-    }
-
-    if ( sourceimg_keypoints.size () < 2 ) {
-      ROS_INFO ("The number of keypoints in source image is less than 2");
-    }
-    else {
-      // make KDTree
-      cv::flann::Index *ft = new cv::flann::Index(sourceimg_descriptors, cv::flann::KDTreeIndexParams(1));
-
-      // matching and detect object
-      ROS_INFO("_templates size: %d", (int)_templates.size());
-      for (int i = 0; i < (int)_templates.size(); i++){
-        posedetection_msgs::Object6DPose o6p;
-
-        cv::Mat debug_img;
-        if (_templates.at(i)->estimate_od(_client, src_img, sourceimg_keypoints, pcam, _err_thr, debug_img, ft, &o6p))
-          vo6p.push_back(o6p);
-
-        // for debug Image topic
-        cv_bridge::CvImage out_msg;
-        out_msg.header   = msg->image.header;
-        out_msg.encoding = "bgr8";
-        out_msg.image    = debug_img;
-        _debug_pub.publish(out_msg.toImageMsg());
-      }
-      delete ft;
-      if (((int)vo6p.size() != 0) || pnod) {
-        od.header.stamp = msg->image.header.stamp;
-        od.header.frame_id = msg->image.header.frame_id;
-        od.objects = vo6p;
-        _pub.publish(od);
-        _pub_agg.publish(od);
-        // Publish result as geometry_msgs/PoseStamped. But it can only contain one object
-        geometry_msgs::PoseStamped pose_msg;
-        pose_msg.header = od.header;
-        pose_msg.pose = od.objects[0].pose;
-        _pub_pose.publish(pose_msg);
-        // broadcast tf
-        if ( this->_publish_tf ) {
-          tf::Transform transform(
-                  tf::Quaternion(
-                      pose_msg.pose.orientation.x,
-                      pose_msg.pose.orientation.y,
-                      pose_msg.pose.orientation.z,
-                      pose_msg.pose.orientation.w
-                      ),
-                  tf::Vector3(
-                      pose_msg.pose.position.x,
-                      pose_msg.pose.position.y,
-                      pose_msg.pose.position.z
-                      )
-                  );
-          _br.sendTransform(
-                  tf::StampedTransform(
-                      transform,
-                      msg->image.header.stamp,
-                      msg->image.header.frame_id,
-                      _child_frame_id
-                      )
-                  );
-        }
-      }
-    }
-    // BOOST_FOREACH(Matching_Template* mt, _templates) {
-    //   std::cerr << "templates_ -> " << mt << std::endl;
-    // }
-    cv::waitKey( 10 );
-  }
-
-  /* if there are subscribers of the output topic -> do work
-         else if -> unregister all topics this node subscribing
-   */
-  void check_subscribers()
-  {
-        if(_pub.getNumSubscribers() == 0 && _initialized) {
-          if(_sub)
-                _sub.shutdown();
-          static int i = 0;
-          if ( i++ % 100 == 0 ) {
-              ROS_INFO("wait for subscriberes ... %s", _pub.getTopic().c_str());
-          }
-        } else {
-          if(!_sub)
-                _sub = _n.subscribe("ImageFeature0D", 1,
-                                    &PointPoseExtractor::imagefeature_cb, this);
-        }
-  }
-
-  /* callback for dynamic reconfigure */
-  void dyn_conf_callback(jsk_perception::point_pose_extractorConfig &config,
-                         uint32_t level) {
-    std::cout << "id = " << config.template_id << std::endl;
-    std::cout << "lvl = " << level << std::endl;
-    if((int)_templates.size() <= config.template_id) {
-      ROS_WARN("template_id is invalid");
-      config.template_id = 0;
-      if(_templates.size() != 0)
-        config.frame_id = _templates[0]->_matching_frame;
-    } else {
-      Matching_Template* tmpl = _templates[config.template_id];
-      if(config.frame_id == tmpl->_matching_frame) {
-        ROS_WARN("update params");
-        tmpl->_reprojection_threshold = config.reprojection_threshold;
-        tmpl->_distanceratio_threshold = config.distanceratio_threshold;
-        _err_thr = config.error_threshold;
-      } else {
-        ROS_WARN("get params");
-        config.frame_id = tmpl->_matching_frame;
-        config.reprojection_threshold = tmpl->_reprojection_threshold;
-        config.distanceratio_threshold = tmpl->_distanceratio_threshold;
-        config.error_threshold = _err_thr;
-      }
-    }
-  }
-
-};  // the end of definition of class PointPoseExtractor
-
-
-std::vector<Matching_Template *> PointPoseExtractor::_templates;
-
-int main (int argc, char **argv){
-  ros::init (argc, argv, "PointPoseExtractor");
-
-  PointPoseExtractor matcher;
-
-  dynamic_reconfigure::Server<jsk_perception::point_pose_extractorConfig> server;
-  dynamic_reconfigure::Server<jsk_perception::point_pose_extractorConfig>::CallbackType f;
-  f = boost::bind(&PointPoseExtractor::dyn_conf_callback, &matcher, _1, _2);
-  server.setCallback(f);
-
-  ros::Rate r(10); // 10 hz
-  while(ros::ok()) {
-        ros::spinOnce();
-        matcher.check_subscribers();
-        r.sleep();
-  }
-
-  return 0;
+    virtual void initialize ();
+    virtual cv::Mat make_homography(cv::Mat src, cv::Mat rvec, cv::Mat tvec,
+                                    double template_width, double template_height, cv::Size &size);
+    virtual int make_warped_images (cv::Mat src, std::vector<cv::Mat> &imgs,
+                                    std::vector<cv:: Mat> &Mvec,
+                                    double template_width, double template_height,
+                                    double th_step, double phi_step);
+    virtual bool add_new_template(cv::Mat img, std::string typestr, tf::Transform relative_pose,
+                                  double template_width, double template_height,
+                                  double theta_step, double phi_step);
+    virtual bool settemplate_cb (jsk_perception::SetTemplate::Request &req,
+                                 jsk_perception::SetTemplate::Response &res);
+    virtual void imagefeature_cb (const posedetection_msgs::ImageFeature0DConstPtr& msg);
+    virtual void onInit();
+    virtual void subscribe();
+    virtual void unsubscribe();
+    virtual void dyn_conf_callback(Config &config, uint32_t level);
+  private:
+  };
 }
+
+
+#endif
