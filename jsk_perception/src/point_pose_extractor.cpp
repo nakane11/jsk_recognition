@@ -92,6 +92,8 @@ namespace jsk_perception
       return;
     }
 
+    _first_sample_change = false;
+
     // relative pose
     std::vector<double> rv(7);
     std::istringstream iss(_pose_str);
@@ -238,13 +240,13 @@ namespace jsk_perception
                               _distanceratio_threshold,
                               (_viewer ? type : ""), _autosize);
       _templates.push_back(tmplt);
-    std::cout << "viewer" << std::endl;
+      std::cout << "viewer" << _templates.size() << std::endl;
       if( _viewer )
         {
           std::cout << "in viewer" << std::endl;
           cv::namedWindow(type, _autosize ? CV_WINDOW_AUTOSIZE : 0);
           // cvSetMouseCallback (type.c_str(), &Mouse::cvmousecb, static_cast<void *>(_templates.back()));
-          cvSetMouseCallback (type.c_str(), &Mouse::cvmousecb, static_cast<void *>(_templates.data()));
+          cvSetMouseCallback (type.c_str(), &cvmousecb, this);
           // cvSetMouseCallback (type.c_str(), &PointPoseExtractor::cvmousecb, static_cast<void *>(_templates.back()));
         }
     }
@@ -329,8 +331,10 @@ namespace jsk_perception
         // Publish result as geometry_msgs/PoseStamped. But it can only contain one object
         geometry_msgs::PoseStamped pose_msg;
         pose_msg.header = od.header;
-        pose_msg.pose = od.objects[0].pose;
-        _pub_pose.publish(pose_msg);
+        if ((int)vo6p.size() != 0) {
+          pose_msg.pose = od.objects[0].pose;
+          _pub_pose.publish(pose_msg);
+        }
         // broadcast tf
         if ( this->_publish_tf ) {
           tf::Transform transform(

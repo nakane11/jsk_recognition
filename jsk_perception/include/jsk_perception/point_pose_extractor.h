@@ -550,138 +550,9 @@ public:
 };  // the end of difinition of class Matching_Template
 
 
-class Mouse
-{
-public:
-
-  static int event(void)
-    {
-      int l_event = m_event;
-      m_event = -1;
-      return l_event;
-    }
-  static int x(void)
-    {
-      return m_x;
-    }
-  static int y(void)
-    {
-      return m_y;
-    }
-
-  static void cvmousecb (int event, int x, int y, int flags, void* param){
-    // Matching_Template *mt = (Matching_Template*)param;
-    std::vector<Matching_Template*>* mt_list = ((std::vector<Matching_Template*>*)param);
-    Matching_Template* mt = ((std::vector<Matching_Template*>*)param)->back();
-    // Matching_Template *mt = (Matching_Template*)param;
-    /* std::cerr << "mousecb_ -> " << mt << std::endl; */
-    switch (event){
-    case CV_EVENT_LBUTTONUP: {
-      cv::Point2d pt(x,y - (int)mt->_template_img.size().height);
-      ROS_INFO("add correspondence (%d, %d)", (int)pt.x, (int)pt.y);
-      mt->_correspondances.push_back(pt);
-      if ((int)mt->_correspondances.size() >= 4){
-        make_template_from_mousecb(*mt_list);
-        mt->_correspondances.clear();
-        ROS_INFO("reset");
-      }
-      break;
-    }
-    case CV_EVENT_RBUTTONUP: {
-      mt->_correspondances.clear();
-      ROS_INFO("reset");
-      break;
-    }
-    }
-  }
-  static void make_template_from_mousecb(std::vector<Matching_Template*>& mt_list){
-      Matching_Template* mt = mt_list.back();
-      cv::Mat H;
-      cv::Mat tmp_template, tmp_warp_template;
-      std::vector<cv::Point2f>pt1, pt2;
-      double width, height;
-      std::string filename;
-      std::cout << "input template's [width]" << std::endl;
-      std::cin >> width;
-      std::cout << "input template's [height]" << std::endl;
-      std::cin >> height;
-      std::cout << "input template's [filename]" << std::endl;
-      std::cin >> filename;
-
-      for (int i = 0; i < 4; i++){
-        pt1.push_back(cv::Point2d((int)mt->_correspondances.at(i).x,
-                                  (int)mt->_correspondances.at(i).y + mt->_template_img.size().height));
-      }
-      cv::Rect rect = cv::boundingRect(cv::Mat(pt1));
-      double scale = std::max(width, height) / 500.0;
-      int iwidth = width / scale, iheight = height / scale;
-      pt2.push_back(cv::Point2d(0,0));
-      pt2.push_back(cv::Point2d(iwidth,0));
-      pt2.push_back(cv::Point2d(iwidth,iheight));
-      pt2.push_back(cv::Point2d(0,     iheight));
-      H = cv::findHomography(cv::Mat(pt1), cv::Mat(pt2));
-
-      cv::getRectSubPix(mt->_previous_stack_img, rect.size(),
-                        cv::Point2f((rect.tl().x + rect.br().x)/2.0,(rect.tl().y + rect.br().y)/2.0),
-                        tmp_template);
-      cv::warpPerspective(mt->_previous_stack_img, tmp_warp_template, H, cv::Size(iwidth, iheight));
-
-      try {
-        cv::imwrite(filename,tmp_template);
-        boost::filesystem::path fname(filename);
-        std::stringstream ss;
-        ss << fname.stem() << "_wrap" << fname.extension();
-        cv::imwrite(ss.str(),tmp_warp_template);
-      }catch (cv::Exception e) {
-        std::cerr << e.what()  << std::endl;
-      }
-
-      for (int i = 0; i < (int)pt1.size(); i++){
-        pt2.push_back(cv::Point2d((int)pt1.at(i).x - rect.x,
-                                  (int)pt1.at(i).y - rect.y - mt->_template_img.size().height));
-      }
-      // cv::Mat mask_img = cv::Mat::zeros(tmp_template.size(), CV_8UC3);
-      // cv::fillConvexPoly(mask_img, pt2.begin(), (int)pt2.size(), CV_RGB(255, 255, 255));
-
-      // cv::namedWindow("hoge", 1);
-      // cv::imshow("hoge", mask_img);
-
-      cv::Mat M = (cv::Mat_<double>(3,3) << 1,0,0, 0,1,0, 0,0,1);
-      std::string window_name = "sample" + boost::lexical_cast<std::string>((int)mt_list.size());
-
-      Matching_Template* tmplt =
-        new Matching_Template (tmp_warp_template, "sample",
-                               tmp_warp_template.size().width, tmp_warp_template.size().height,
-                               width, height,
-                               tf::Transform(tf::Quaternion(0, 0, 0, 1), tf::Vector3(0, 0, 0)),
-                               M,
-                               mt->_reprojection_threshold,
-                               mt->_distanceratio_threshold,
-                               first_sample_change ? window_name : mt->_window_name,
-                               cv::getWindowProperty(mt->_window_name, CV_WND_PROP_AUTOSIZE));
-
-      mt->_correspondances.clear();
-      mt_list.push_back(tmplt);
-      cv::namedWindow(first_sample_change ? window_name : mt->_window_name,
-                      cv::getWindowProperty(mt->_window_name, CV_WND_PROP_AUTOSIZE));
-      cvSetMouseCallback (first_sample_change ? window_name.c_str() : mt->_window_name.c_str(),
-                          &cvmousecb, static_cast<void *>(mt_list.data()));
-                          // &cvmousecb, static_cast<void *>(mt_list.back()));
-      first_sample_change = true;
-    }
-private:
-  static bool first_sample_change;
-  static int m_event;
-  static int m_x;
-  static int m_y;
-};
-int Mouse::m_event;
-int Mouse::m_x;
-int Mouse::m_y;
-bool Mouse::first_sample_change;
-
 namespace jsk_perception
 {
+
   class PointPoseExtractor: public jsk_topic_tools::DiagnosticNodelet
   {
   public:
@@ -698,6 +569,7 @@ namespace jsk_perception
     ros::Publisher _pub, _pub_agg, _pub_pose;
     tf::TransformBroadcaster _br;
     image_transport::Publisher _debug_pub;
+    bool _first_sample_change;
     double _reprojection_threshold;
     double _distanceratio_threshold;
     double _th_step;
@@ -728,6 +600,105 @@ namespace jsk_perception
     virtual void subscribe();
     virtual void unsubscribe();
     virtual void dyn_conf_callback(Config &config, uint32_t level);
+
+    static void cvmousecb (int event, int x, int y, int flags, void* param){
+      PointPoseExtractor* ppe = reinterpret_cast<PointPoseExtractor*>(param);
+      std::cout << "size " << ppe->_templates.size() << std::endl;
+      Matching_Template *mt = ppe->_templates.back();
+      std::cerr << "mousecb_ -> " << mt << std::endl;
+      switch (event){
+      case CV_EVENT_LBUTTONUP: {
+        cv::Point2d pt(x,y - (int)mt->_template_img.size().height);
+        ROS_INFO("add correspondence (%d, %d)", (int)pt.x, (int)pt.y);
+        mt->_correspondances.push_back(pt);
+        if ((int)mt->_correspondances.size() >= 4){
+          make_template_from_mousecb(ppe);
+          mt->_correspondances.clear();
+          ROS_INFO("reset");
+        }
+        break;
+      }
+      case CV_EVENT_RBUTTONUP: {
+        mt->_correspondances.clear();
+        ROS_INFO("reset");
+        break;
+      }
+      }
+    }
+  static void make_template_from_mousecb(PointPoseExtractor* ppe){
+    Matching_Template *mt = ppe->_templates.back();
+    cv::Mat H;
+    cv::Mat tmp_template, tmp_warp_template;
+    std::vector<cv::Point2f>pt1, pt2;
+    double width, height;
+    std::string filename;
+    std::cout << "input template's [width]" << std::endl;
+    std::cin >> width;
+    std::cout << "input template's [height]" << std::endl;
+    std::cin >> height;
+    std::cout << "input template's [filename]" << std::endl;
+    std::cin >> filename;
+
+    for (int i = 0; i < 4; i++){
+      pt1.push_back(cv::Point2d((int)mt->_correspondances.at(i).x,
+                                (int)mt->_correspondances.at(i).y + mt->_template_img.size().height));
+    }
+    cv::Rect rect = cv::boundingRect(cv::Mat(pt1));
+    double scale = std::max(width, height) / 500.0;
+    int iwidth = width / scale, iheight = height / scale;
+    pt2.push_back(cv::Point2d(0,0));
+    pt2.push_back(cv::Point2d(iwidth,0));
+    pt2.push_back(cv::Point2d(iwidth,iheight));
+    pt2.push_back(cv::Point2d(0,     iheight));
+    H = cv::findHomography(cv::Mat(pt1), cv::Mat(pt2));
+
+    cv::getRectSubPix(mt->_previous_stack_img, rect.size(),
+                      cv::Point2f((rect.tl().x + rect.br().x)/2.0,(rect.tl().y + rect.br().y)/2.0),
+                      tmp_template);
+    cv::warpPerspective(mt->_previous_stack_img, tmp_warp_template, H, cv::Size(iwidth, iheight));
+
+    try {
+      cv::imwrite(filename,tmp_template);
+      boost::filesystem::path fname(filename);
+      std::stringstream ss;
+      ss << fname.stem() << "_wrap" << fname.extension();
+      cv::imwrite(ss.str(),tmp_warp_template);
+    }catch (cv::Exception e) {
+      std::cerr << e.what()  << std::endl;
+    }
+
+    for (int i = 0; i < (int)pt1.size(); i++){
+      pt2.push_back(cv::Point2d((int)pt1.at(i).x - rect.x,
+                                (int)pt1.at(i).y - rect.y - mt->_template_img.size().height));
+    }
+    // cv::Mat mask_img = cv::Mat::zeros(tmp_template.size(), CV_8UC3);
+    // cv::fillConvexPoly(mask_img, pt2.begin(), (int)pt2.size(), CV_RGB(255, 255, 255));
+
+    // cv::namedWindow("hoge", 1);
+    // cv::imshow("hoge", mask_img);
+
+    cv::Mat M = (cv::Mat_<double>(3,3) << 1,0,0, 0,1,0, 0,0,1);
+    std::string window_name = "sample" + boost::lexical_cast<std::string>((int)ppe->_templates.size());
+
+    Matching_Template* tmplt =
+      new Matching_Template (tmp_warp_template, "sample",
+                             tmp_warp_template.size().width, tmp_warp_template.size().height,
+                             width, height,
+                             tf::Transform(tf::Quaternion(0, 0, 0, 1), tf::Vector3(0, 0, 0)),
+                             M,
+                             mt->_reprojection_threshold,
+                             mt->_distanceratio_threshold,
+                             ppe->_first_sample_change ? window_name : mt->_window_name,
+                             cv::getWindowProperty(mt->_window_name, CV_WND_PROP_AUTOSIZE));
+
+    mt->_correspondances.clear();
+    ppe->_templates.push_back(tmplt);
+    cv::namedWindow(ppe->_first_sample_change ? window_name : mt->_window_name,
+                    cv::getWindowProperty(mt->_window_name, CV_WND_PROP_AUTOSIZE));
+    cvSetMouseCallback (ppe->_first_sample_change ? window_name.c_str() : mt->_window_name.c_str(),
+                        &cvmousecb, ppe);
+    ppe->_first_sample_change = true;
+  }
   private:
   };
 }
