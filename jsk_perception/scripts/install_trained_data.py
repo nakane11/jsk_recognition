@@ -319,6 +319,14 @@ def main():
         quiet=quiet,
     )
 
+    # deep person reid
+    download_data(
+        pkg_name=PKG,
+        path='trained_data/deep_person_reid/'
+        'resnet50-19c8e357.pth',
+        url='https://drive.google.com/uc?id=1-yoTDw3R0h4AWwHBLfyBCx3urcE_-0OL',
+        md5='9e9c86b324d80e65229fab49b8d9a8e8',
+    )    
 
 if __name__ == '__main__':
     main()
