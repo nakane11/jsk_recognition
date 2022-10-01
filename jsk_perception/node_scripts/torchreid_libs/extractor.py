@@ -33,7 +33,7 @@ class ReIDFeatureExtractor(object):
 
         if ckpt_file:
             ckpt = torch.load(ckpt_file, map_location=torch.device('cpu'))
-            self._model.load_state_dict(ckpt["model_state"])
+            self._model.load_state_dict(ckpt["state_dict"])
 
         self._model.eval()
         self._model = self._model.to(self.device)

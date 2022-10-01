@@ -323,9 +323,9 @@ def main():
     download_data(
         pkg_name=PKG,
         path='trained_data/deep_person_reid/'
-        'resnet50-19c8e357.pth',
-        url='https://drive.google.com/uc?id=1-yoTDw3R0h4AWwHBLfyBCx3urcE_-0OL',
-        md5='9e9c86b324d80e65229fab49b8d9a8e8',
+        'resnet50-19c8e357.cpt',
+        url='https://drive.google.com/uc?id=1I3yS0yTnsd17yA0_KfbDHa5CPhSMQd5E',
+        md5='b10c52d877c7cd045836e390d905b2f5',
     )    
 
 if __name__ == '__main__':
