@@ -1,0 +1,27 @@
+<launch>
+
+  <arg name="gui" default="true" />
+  <arg name="gpu" default="-1" />
+  <arg name="INPUT_IMAGE" default="/camera/rgb/image_rect_color" />
+
+  <include file="$(find jsk_perception)/sample/include/play_rosbag_people.xml" />
+
+  <node name="people_detect" pkg="opencv_apps" type="people_detect" >
+    <remap from="image" to="$(arg INPUT_IMAGE)" />
+    <param name="use_camera_info" value="false" />
+  </node>
+
+  <node name="deep_person_reid"
+        pkg="jsk_perception" type="deep_person_reid_node.py"
+        output="screen">
+    <remap from="~input/image" to="$(arg INPUT_IMAGE)" />
+    <remap from="~input/roi" to="/people_detect/found" />
+    <rosparam subst_value="true">
+      model: resnet50
+      checkpoint_file: $(find jsk_perception)/trained_data/deep_person_reid/resnet50-19c8e357.cpt
+      gpu: $(arg gpu)
+      queue_size: 1
+    </rosparam>
+  </node>
+
+</launch>
