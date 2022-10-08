@@ -10,6 +10,8 @@ import cv2
 from cv_bridge import CvBridge
 
 from torchreid_libs.extractor import ReIDFeatureExtractor
+import torch
+cos = torch.nn.CosineSimilarity(dim=1)
 
 class DeepPersonReIDNode(ConnectionBasedTransport):
 
@@ -31,6 +33,7 @@ class DeepPersonReIDNode(ConnectionBasedTransport):
 
         self.bridge = CvBridge()
         self.rect_pub = self.advertise('~output', RectArrayStamped, queue_size=1)
+        self.template = self._extractor(cv2.imread('/tmp/person.jpg'))
 
     def subscribe(self):
         self.image_sub = message_filters.Subscriber('~input/image', Image)
@@ -65,7 +68,7 @@ class DeepPersonReIDNode(ConnectionBasedTransport):
             image_roi_slice = np.index_exp[int(cy - h / 2):int(cy + h / 2),
                                            int(cx - w / 2):int(cx + w / 2)]
             feature = self._extractor(img[image_roi_slice])
-            print(feature)
+            print(cos(self.template, feature))
         rect = RectArrayStamped(header=image.header)
         self.rect_pub.publish(rect)
 
