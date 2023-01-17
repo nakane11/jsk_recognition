@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from dr_spaam_libs.detector import DRSpaamDetector
 from dynamic_reconfigure.server import Server as ReconfigureServer
 from geometry_msgs.msg import Point
 from geometry_msgs.msg import Pose
@@ -20,7 +21,6 @@ from visualization_msgs.msg import MarkerArray
 
 from jsk_perception.cfg import LidarPersonDetectionConfig as Config
 
-from dr_spaam_libs.detector import DRSpaamDetector
 from jsk_recognition_utils.trackers import Sort
 from jsk_recognition_utils.trackers.kalman_tracker import KalmanPositionTracker
 from jsk_recognition_utils.geometry import euclidean_distances
@@ -79,7 +79,8 @@ class LidarPersonDetectionNode(ConnectionBasedTransport):
     def subscribe(self):
         self._scan_sub = rospy.Subscriber(
             '~input', LaserScan, self._scan_callback,
-            queue_size=rospy.get_param('~queue_size', 1))
+            queue_size=rospy.get_param('~queue_size', 1),
+            buff_size=2**24)
 
     def unsubscribe(self):
         self._scan_sub.unregister()
