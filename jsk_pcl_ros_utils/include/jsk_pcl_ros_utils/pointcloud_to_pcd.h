@@ -41,7 +41,7 @@
 #include <jsk_recognition_utils/tf_listener_singleton.h>
 
 #include <sensor_msgs/PointCloud2.h>
-#include <std_srvs/Empty.h>
+#include <jsk_recognition_msgs/SavePCD.h>
 #include <dynamic_reconfigure/server.h>
 #include <jsk_pcl_ros_utils/PointCloudToPCDConfig.h>
 
@@ -57,7 +57,8 @@ namespace jsk_pcl_ros_utils
     virtual void timerCallback (const ros::TimerEvent& event);
     virtual void configCallback(Config &config, uint32_t level);
     void savePCD();
-    bool savePCDCallback(std_srvs::Empty::Request& req, std_srvs::Empty::Response& res);
+    bool savePCDCallback(jsk_recognition_msgs::SavePCD::Request& req,
+                         jsk_recognition_msgs::SavePCD::Response& res);
     boost::mutex mutex_;
     boost::shared_ptr <dynamic_reconfigure::Server<Config> > srv_;
     ros::Timer timer_;

@@ -53,7 +53,10 @@ namespace jsk_pcl_ros_utils
     savePCD();
   }
 
-  bool PointCloudToPCD::savePCDCallback(std_srvs::Empty::Request& req, std_srvs::Empty::Response& res) {
+  bool PointCloudToPCD::savePCDCallback(jsk_recognition_msgs::SavePCD::Request& req,
+                                        jsk_recognition_msgs::SavePCD::Response& res) {
+    if(req.name.length())
+      filename_ = req.name;
     savePCD();
     return true;
   }
@@ -89,7 +92,12 @@ namespace jsk_pcl_ros_utils
     }
   
     std::stringstream ss;
-    ss << prefix_ << cloud->header.stamp << ".pcd";
+    if (filename_.length()) {
+      ss << filename_.c_str();
+      filename_ = "";
+    }
+    else
+      ss << prefix_ << cloud->header.stamp << ".pcd";
     ROS_INFO ("Data saved to %s", ss.str ().c_str ());
   
     pcl::PCDWriter writer;
