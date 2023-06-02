@@ -96,6 +96,7 @@ add_service_files(FILES
   PolygonOnEnvironment.srv
   RobotPickupReleasePoint.srv
   SaveMesh.srv
+  SavePCD.srv
   SetDepthCalibrationParameter.srv
   SetLabels.srv
   SetPointCloud2.srv
