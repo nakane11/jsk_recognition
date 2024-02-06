@@ -74,6 +74,7 @@ class DataAmplitudePlot(ConnectionBasedTransport):
 
     def config_callback(self, config, level):
         self.maximum_amplitude = config.maximum_amplitude
+        self.minimum_amplitude = config.minimum_amplitude
         self.window_size = config.window_size
         self.data_buffer.window_size = self.window_size
         return config
@@ -88,7 +89,7 @@ class DataAmplitudePlot(ConnectionBasedTransport):
         # Plot data amplitude.
         self.line.set_data(times, amp)
         self.ax.set_xlim((times.min(), times.max()))
-        self.ax.set_ylim((-self.maximum_amplitude, self.maximum_amplitude))
+        self.ax.set_ylim((self.minimum_amplitude, self.maximum_amplitude))
 
         self.ax.legend(loc='upper right')
         self.fig.tight_layout()
